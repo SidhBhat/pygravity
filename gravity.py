@@ -1,3 +1,4 @@
+from types import NoneType
 import matplotlib
 import matplotlib.pyplot as pyplot
 import numpy
@@ -47,6 +48,7 @@ class Body:
 			'name'     : self.name,
 			'color'    : self.color,
 			'mass'     : self.mass,
+			'radius'   : self.radius,
 			'position' : self.position
 			});
 
@@ -129,6 +131,7 @@ class Dynamic_Body(Body):
 			'name'         : self.name,
 			'color'        : self.color,
 			'mass'         : self.mass,
+			'radius'       : self.radius,
 			'position'     : self.position,
 			'velocity'     : self.velocity,
 			'acceleration' : self.acceleration
@@ -213,7 +216,7 @@ class Body_list:
 				name         = body.get('name', f"Body {n}"),
 				color        = body.get('color', 'k'),
 				mass         = body.get('mass', 1),
-				radius       = body.get('radius', body.get('mass', 1) ** 0.5 * 0.1),
+				radius       = body.get('radius', 'Defualt'),
 				position     = body.get('position', [0, 0]),
 				velocity     = body.get('velocity', [0, 0])
 				));
@@ -225,10 +228,11 @@ class Body_list:
 				name         = body.get('name', f"Body {len(self.body_list) + 1}"),
 				color        = body.get('color', 'k'),
 				mass         = body.get('mass', 1),
-				radius       = body.get('radius', body.get('mass', 1) ** 0.5 * 0.1),
+				radius       = body.get('radius', 'Default'),
 				position     = body.get('position', [0, 0]),
 				velocity     = body.get('velocity', [0, 0])
 				));
+		return self.body_list[-1];
 
 	# specify index or name of body
 	def remove_body(self, body_id):
@@ -305,11 +309,14 @@ class Environment(Body_list):
 			self.fps          = numpy.double(20);
 			self.radius       = numpy.double(0.1);
 			self.bounds       = numpy.double(5);
-			self.origin       = numpy.array([0,0]);
+			self.origin       = numpy.array([0,0], dtype=numpy.double);
 			self.trace_length = numpy.double(100);
 			self.G            = numpy.double(1);
 			# bring vector to correct shape
 			numpy.reshape(self.origin,2);
+
+			# Lock onto a body
+			self.frame_lockon = None;
 
 	def draw(self, **properties):
 		self.figure, self.axes = pyplot.subplots(1,1);
@@ -340,19 +347,18 @@ class Environment(Body_list):
 	def simulate(self, time, **properties):
 		self.set_simulation_opts(**properties);
 		self.figure, self.axes = pyplot.subplots(1,1);
-		compute   = _Compute(self);
-		fps       = self.get_fps();
-		timestep  = self.get_timestep();
-		time_text = None;
-		time_template = 'time = %.1fs';
+		compute                = _Compute(self);
 		xllim = self.plot_properties.origin[0] - self.plot_properties.bounds / 2;
 		xhlim = self.plot_properties.origin[0] + self.plot_properties.bounds / 2;
 		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
 		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
+		time_template = 'time = %.1fs';
+		timestep      = self.get_timestep();
+		fps           = self.get_fps();
+		time_text     = None;
 
 		def setup():
-			nonlocal time_text, time_template;
-			compute.populate_acceleration_data();
+			nonlocal time_text, time_template, compute;
 			compute.setup_bodies();
 			compute.plot_setup();
 			time_text = self.axes.text(0.05, 0.9, (time_template % 0.0),
@@ -362,18 +368,17 @@ class Environment(Body_list):
 			return artists;
 
 		def animate(frame_data):
-			for i in range(int(1 / (fps * timestep))):
-				compute.update_bodies();
+			compute.update_bodies(1 / fps);
 			time_text.set_text(time_template % (frame_data / fps));
 			artists = compute.plot_bodies();
 			artists.append(time_text);
 			return artists;
 
-		if(self.get_fps()*self.get_timestep() > numpy.double(1)):
+		if(self.get_fps()*self.get_timestep() >= numpy.double(1)):
 			raise ValueError(f"timestep \'{timestep}\' is too large")
 
 		ani = FuncAnimation(self.figure, animate, numpy.arange(1, fps*time, dtype=numpy.double),
-			init_func=setup, interval=1000 / fps , repeat=False, blit=True);
+			init_func=setup, interval=1000 / fps, repeat=False, blit=True);
 
 		# set axis properties
 		self.axes.axis('square');
@@ -451,6 +456,11 @@ class Environment(Body_list):
 	def get_gravitational_constant(self):
 		return self.G;
 
+	def lock_frame_on(self, planet):
+		if(not (Body is type(planet) or Dynamic_Body is type(planet))):
+			raise TypeError(f"\'{planet}\' is not a body type")
+		self.plot_properties.frame_lockon = planet;
+
 # Helper class for computations
 class _Compute(Environment):
 	# perform a shallow copy of the Environment instance
@@ -493,11 +503,15 @@ class _Compute(Environment):
 					bd2.mass * bd2.velocity);
 
 		if (bd2.mass >= bd1.mass):
+			if (bd1 is self.plot_properties.frame_lockon):
+				self.plot_properties.frame_locon = bd2;
 			bd2.mass = Mass;
 			bd2.velocity = velocity;
 			bd1.name = delete_string;
 			bd = bd2;
 		else:
+			if (bd2 is self.plot_properties.frame_lockon):
+				self.plot_properties.frame_locon = bd1;
 			bd1.mass = Mass;
 			bd1.velocity = velocity;
 			bd2.name = delete_string;
@@ -546,55 +560,104 @@ class _Compute(Environment):
 				body.radius = (body.mass / self._min_mass) ** 0.5 * \
 					self.plot_properties.radius;
 
+	# get acceleration of body irrespective of referance frame (non-inertial)
+	def get_acceleration(self, body):
+		G = self.plot_properties.G;
+		norm   = numpy.linalg.norm;
+		power  = numpy.power;
+
+		# assumes sum calles the appropriate numpy method!!
+		return sum((G * bd.mass / power(norm(bd.position - body.position),3)) * \
+						(bd.position - body.position)
+						for bd in self.every_other_body(body));
+
+	# populate acceleration data with respect to frame of referance
+	def populate_acceleration_data(self):
+		G = self.plot_properties.G;
+		locked_body  = self.plot_properties.frame_lockon;
+		norm  = numpy.linalg.norm;
+
+		if (type(locked_body) is NoneType):
+			for body in self:
+				body.acceleration = self.get_acceleration(body);
+		else:
+			frame_acceleration = self.get_acceleration(locked_body)
+			for body in self.every_other_body(locked_body):
+				body.acceleration = self.get_acceleration(body) - frame_acceleration;
+			locked_body.acceleration = numpy.array([0,0], dtype=numpy.double);
+
+	# routine for handling collisions
+	def _collision_handler(self, body):
+		for bd in self.every_other_body(body):
+			if(self.two_bodies_overlap(body, bd)):
+				self.merge_two_bodies(body,bd);
+
+		if (type(self.plot_properties.frame_lockon) is NoneType):
+			self.change_intertial_frame(self.zero_momentum_frame());
+		else:
+			self.change_intertial_frame(self.plot_properties.frame_lockon.velocity);
+			self.plot_properties.frame_lockon.velocity = numpy.array([0,0], dtype=numpy.double);
+
 	# this routine will setup the bodies up for simulation, Specifically:
 	## overlapping bodies are merged...
 	## the intertial frame is set to the net zero momentum frame
 	def setup_bodies(self):
-		bd_list = self.body_list;
-		for body in bd_list:
+		self.adjust_radius();
+		for body in self:
 			for bd in self.every_other_body(body):
 				if(self.two_bodies_overlap(body,bd)):
 					self.merge_two_bodies(body,bd);
-		self.change_intertial_frame(self.zero_momentum_frame());
+		self.populate_acceleration_data();
 
-	def populate_acceleration_data(self):
+		if (type(self.plot_properties.frame_lockon) is NoneType):
+			self.change_intertial_frame(self.zero_momentum_frame());
+		else:
+			print(self.plot_properties.frame_lockon);
+			print(self.plot_properties.frame_lockon.velocity);
+			self.change_intertial_frame(self.plot_properties.frame_lockon.velocity);
+			self.plot_properties.frame_lockon.acceleration = numpy.array([0,0], dtype=numpy.double);
+			self.plot_properties.frame_lockon.velocity     = numpy.array([0,0], dtype=numpy.double);
+
+	def update_bodies(self, time):
 		G = self.plot_properties.G;
-		norm  = numpy.linalg.norm;
-
-		for body in self.body_list:
-			# assumes sum calles the appropriate numpy method!!
-			body.acceleration = sum(
-				(G * bd.mass / norm(bd.position - body.position) ** 3) * \
-					(bd.position - body.position)
-				for bd in self.every_other_body(body));
-
-	def _collision_handler(self, body):
-		# breakpoint();
-		for bd in self.every_other_body(body):
-			if(self.two_bodies_overlap(body, bd)):
-				self.merge_two_bodies(body,bd);
-		# breakpoint();
-		# self.change_intertial_frame(self.zero_momentum_frame());
-
-	def update_bodies(self):
-		G = self.plot_properties.G;
+		locked_body        = self.plot_properties.frame_lockon;
 		norm   = numpy.linalg.norm;
 		power  = numpy.power;
 		tDelta = self.get_timestep();
+		time   = numpy.double(time);
 
-		for body in self:
-			self._collision_handler(body);
-		for body in self:
-			# assumes sum calles the appropriate numpy method!!
-			body.acceleration = sum(
-				(G * bd.mass / power(norm(bd.position - body.position),3)) * \
-					(bd.position - body.position)
-				for bd in self.every_other_body(body));
-			body.update_velocity(tDelta);
-			body.update_position(tDelta);
+		t = numpy.double(0);
+		if (type(locked_body) is NoneType):
+			while (t < time):
+				for body in self:
+					self._collision_handler(body);
+				for body in self:
+					# assumes sum calles the appropriate numpy method!!
+					body.acceleration = sum(
+						(G * bd.mass / power(norm(bd.position - body.position),3)) * \
+						(bd.position - body.position)
+						for bd in self.every_other_body(body));
+					body.update_velocity(tDelta);
+					body.update_position(tDelta);
+				t += tDelta;
+		else:
+			while (t < time):
+				for body in self:
+					self._collision_handler(body);
+				frame_acceleration = self.get_acceleration(locked_body);
+				for body in self.every_other_body(locked_body):
+					# assumes sum calles the appropriate numpy method!!
+					body.acceleration = sum(
+						(G * bd.mass / power(norm(bd.position - body.position),3)) * \
+						(bd.position - body.position)
+						for bd in self.every_other_body(body)) - frame_acceleration;
+					body.update_velocity(tDelta);
+					body.update_position(tDelta);
+				t += tDelta;
 
 	def plot_setup(self):
 		for body in self:
+			# prevent previous trace being erased
 			if (not hasattr(body,'trace')):
 				body.xtrace = [];
 				body.ytrace = [];

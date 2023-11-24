@@ -7,20 +7,33 @@ env = gravity.Environment();
 
 
 # Three bodies orbiting each other
-env.add_body(name='earth',color='b',mass=10,position=[0,0],velocity=[0.181,0]);
-env.add_body(name='moon',color='k',mass=1,position=[0,3],velocity=[-1.769,0]);
-env.add_body(name='satelite',color='r',mass=0.1,position=[0,3.5],velocity=[-0.355,0]);
+# earth = env.add_body(name='earth',color='b',mass=10,position=[0,0],velocity=[0.181,0]);
+# env.add_body(name='moon',color='k',mass=1,position=[0,3],velocity=[-1.769,0]);
+# satelite = env.add_body(name='satelite',color='r',mass=0.1,position=[0,3.5],velocity=[-0.355,0]);
+
+## Collision test
+env.add_body(name='body 1',color='b',mass=100,position=[0,0],velocity=[0,0]);
+env.add_body(name='body 2',color='r',mass=100,position=[-2,0],velocity=[0,7]);
+satelite = env.add_body(name='body 3',color='g',mass=50,position=[4,0],velocity=[-7,0.1]);
 
 env.set_fps(60);
-env.set_radius(0.05);
-env.set_timestep(0.001);
-env.set_bounds(7);
-# env.set_origin([-3,0]);
-env[0]['radius'] = 0.7;
+env.set_radius(0.1);
+env.set_timestep(0.0001);
+env.set_bounds(10);
+env.set_origin([0,0]);
+# env[0]['radius'] = 0.7;
+env.lock_frame_on(satelite);
+
+for bd in env:
+	print(bd);
 
 env.draw();
 
-env.simulate(10);
+for bd in env:
+	print(bd);
+
+
+env.simulate(25);
 
 
 ## Collision test
