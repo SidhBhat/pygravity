@@ -5,14 +5,23 @@ import gravity
 
 env = gravity.Environment();
 
-## 10 bodies placed on a diagonal
-# for i in range (-5,5,1):
-# 	env.add_body(mass=1,position=[i,i]);
 
 # Three bodies orbiting each other
 env.add_body(name='earth',color='b',mass=10,position=[0,0],velocity=[0.181,0]);
 env.add_body(name='moon',color='k',mass=1,position=[0,3],velocity=[-1.769,0]);
 env.add_body(name='satelite',color='r',mass=0.1,position=[0,3.5],velocity=[-0.355,0]);
+
+env.set_fps(60);
+env.set_radius(0.05);
+env.set_timestep(0.001);
+env.set_bounds(7);
+# env.set_origin([-3,0]);
+env[0]['radius'] = 0.7;
+
+env.draw();
+
+env.simulate(10);
+
 
 ## Collision test
 # env.add_body(name='body 1',color='b',mass=100,position=[0,0],velocity=[0,0]);
@@ -32,9 +41,6 @@ env.add_body(name='satelite',color='r',mass=0.1,position=[0,3.5],velocity=[-0.35
 # env.add_body(name='satelite',color='r',mass=10,position=[10,0],velocity=[0,80]);
 # env.add_body(name='satelite',color='r',mass=1,position=[-10,0],velocity=[0,95]);
 
-env.set_fps(60);
-env.set_markersize(30);
-env.set_timestep(0.0001);
-env.set_bounds(5);
-
-env.simulate(100);
+## 10 bodies placed on a diagonal
+# for i in range (-5,5,1):
+# 	env.add_body(mass=1,position=[i,i]);

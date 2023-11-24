@@ -2,13 +2,13 @@ import matplotlib
 import matplotlib.pyplot as pyplot
 import numpy
 from matplotlib.animation import FuncAnimation
-
-G = numpy.double(1);
+import pdb
 
 # Execption Classes
 class Zero_MassERROR(Exception):
 	pass;
 
+# Not meant to be used directly
 class Body:
 	def _set_vector(vec_like):
 		vec = numpy.array(vec_like, dtype=numpy.double);
@@ -19,18 +19,28 @@ class Body:
 			name     = "Body",
 			color    = "k",
 			mass     = 1,
+			radius   = 'Defualt',
 			position = [0, 0]
 			):
 
 		if(not mass):
 			raise Zero_MassERROR("The mass of a body cannot be zero");
 		if (not (type(name) is str and type(color) is str)):
-			raise ValueError("\'name\' nad \'color\' expect string arguments only")
+			raise ValueError("\'name\' nad \'color\' expect string arguments only");
 
 		self.position = Body._set_vector(position);
 		self.mass     = numpy.double(mass);
 		self.name     = name;
 		self.color    = color;
+		self._Costom_radius = False;
+
+		# special behaviour
+		if (type(radius) is str):
+			self.radius   = numpy.double(1);
+		else:
+			self.radius   = numpy.double(radius);
+			self._Costom_radius = True;
+
 
 	def __str__(self):
 		return format({
@@ -50,6 +60,8 @@ class Body:
 				return self.color;
 			elif (key == 'mass'):
 				return self.mass;
+			elif (key == 'radius'):
+				return self.radius;
 			elif (key == 'position'):
 				return self.position;
 			else:
@@ -74,24 +86,32 @@ class Body:
 					self.mass = numpy.double(value);
 				else:
 					raise Zero_MassERROR("The mass of a body cannot be zero");
+			elif (key == 'radius'):
+				if (value):
+					self.radius = numpy.double(value);
+					self._Costom_radius = True;
+				else:
+					raise TypeError("The radius of a body cannot be zero");
 			elif (key == 'position'):
-				self.position     = Body._set_vector(value);
+				self.position = Body._set_vector(value);
 			else:
 				raise IndexError("Invalid Key value: \'{key}\'");
 		else:
 			raise TypeError("Key must be a string value");
 
+# Not meant to be used directly
 class Dynamic_Body(Body):
 	def __init__(self,
 			name         = "Body",
 			color        = "k",
 			mass         = 1,
+			radius       = 'Default',
 			position     = [0, 0],
 			velocity     = [0, 0],
 			acceleration = [0, 0]
 			):
 
-		Body.__init__(self, name, color, mass, position);
+		Body.__init__(self, name, color, mass, radius, position);
 		self.velocity     = Body._set_vector(velocity);
 		self.acceleration = Body._set_vector(acceleration);
 
@@ -124,6 +144,8 @@ class Dynamic_Body(Body):
 				return self.color;
 			elif (key == 'mass'):
 				return self.mass;
+			elif (key == 'radius'):
+				return self.radius;
 			elif (key == 'position'):
 				return self.position;
 			elif (key == 'velocity'):
@@ -152,6 +174,12 @@ class Dynamic_Body(Body):
 					self.mass = numpy.double(value);
 				else:
 					raise Zero_MassERROR("The mass of a body cannot be zero");
+			elif (key == 'radius'):
+				if (value):
+					self.radius = numpy.double(value);
+					self._Costom_radius = True;
+				else:
+					raise TypeError("The radius of a body cannot be zero");
 			elif (key == 'position'):
 				self.position     = Body._set_vector(value);
 			elif (key == 'velocity'):
@@ -163,26 +191,29 @@ class Dynamic_Body(Body):
 		else:
 			raise TypeError("Key must be a string value");
 
+# Iterable containing all bodies
 class Body_list:
 	"""argument to __init__ 'body_list' is a list of dictionaries of the form:
 	{
-	'name':     "<name>",   # a string (optional)
-	'color':    '<color>',  # single character (optional)
+	'name':     "<name>",   # a string
+	'color':    '<color>',  # single character
 	'mass':     <mass>,
-	'position': [x_pos, y_pos],
-	'velocity': [x_vel, y_vel],
+	'position': [<x_pos>, <y_pos>],
+	'velocity': [<x_vel>, <y_vel>]
 	}
 	"""
 	def __init__(self,
 			*body_list # Expects a list of dictionaries
 			):
 		self.body_list = [];
+
 		n = int(1);
 		for body in body_list:
 			self.body_list.append(Dynamic_Body(
 				name         = body.get('name', f"Body {n}"),
 				color        = body.get('color', 'k'),
 				mass         = body.get('mass', 1),
+				radius       = body.get('radius', body.get('mass', 1) ** 0.5 * 0.1),
 				position     = body.get('position', [0, 0]),
 				velocity     = body.get('velocity', [0, 0])
 				));
@@ -194,6 +225,7 @@ class Body_list:
 				name         = body.get('name', f"Body {len(self.body_list) + 1}"),
 				color        = body.get('color', 'k'),
 				mass         = body.get('mass', 1),
+				radius       = body.get('radius', body.get('mass', 1) ** 0.5 * 0.1),
 				position     = body.get('position', [0, 0]),
 				velocity     = body.get('velocity', [0, 0])
 				));
@@ -227,6 +259,7 @@ class Body_list:
 			raise IndexError("Index out of range");
 		return self.body_list[index];
 
+	# Required as we frequently use the iterable in nested loops
 	class _Iterator:
 		def __init__(self, body_list_obj):
 			self._data = body_list_obj;
@@ -241,6 +274,7 @@ class Body_list:
 	def __iter__(self):
 		return self._Iterator(self);
 
+# Plot and simulation environment
 class Environment(Body_list):
 	"""argument to __init__ 'body_list' is a list of dictionaries of the form:
 	{
@@ -255,7 +289,7 @@ class Environment(Body_list):
 			*body_list # Expects a list of dictionaries
 			):
 		if (len(body_list)):
-			Body_list.__init__(self, body_list);
+			Body_list.__init__(self, *body_list);
 		else:
 			Body_list.__init__(self);
 
@@ -263,39 +297,40 @@ class Environment(Body_list):
 		self.figure, self.axes = (None, None);
 		self.plot_properties = self._Plot_properties();
 
-
-	def min_mass(self):
-		return numpy.double(min(body.mass for body in self.body_list));
-
 	class _Plot_properties:
 		#default values
 		def __init__(self):
 			# the timestep interval
 			self.timestep     = numpy.double(0.0001);
-			self.markersize   = numpy.double(20);
 			self.fps          = numpy.double(20);
-			self.xbound       = numpy.double(5);
-			self.ybound       = numpy.double(5);
+			self.radius       = numpy.double(0.1);
+			self.bounds       = numpy.double(5);
+			self.origin       = numpy.array([0,0]);
 			self.trace_length = numpy.double(100);
+			self.G            = numpy.double(1);
+			# bring vector to correct shape
+			numpy.reshape(self.origin,2);
 
 	def draw(self, **properties):
 		self.figure, self.axes = pyplot.subplots(1,1);
 		self.set_simulation_opts(**properties);
-		min_mass = self.min_mass();
+		xllim = self.plot_properties.origin[0] - self.plot_properties.bounds / 2;
+		xhlim = self.plot_properties.origin[0] + self.plot_properties.bounds / 2;
+		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
+		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
 
 		compute = _Compute(self);
-		compute.populate_acceleration_data();
+		# compute.populate_acceleration_data();
 		compute.setup_bodies();
 		compute.plot_setup();
 		compute.plot_bodies();
 
 		# set axis properties
-		# self.axes.set_title('Current Position');
 		self.axes.axis('square');
+		self.axes.set_xlim(xllim, xhlim);
+		self.axes.set_ylim(yllim, yhlim);
 		self.axes.autoscale(False);
 		self.axes.axis('off');
-		self.axes.set_xlim(-self.get_xbound(),self.get_xbound());
-		self.axes.set_ylim(-self.get_xbound(),self.get_xbound());
 
 		pyplot.show();
 
@@ -310,6 +345,10 @@ class Environment(Body_list):
 		timestep  = self.get_timestep();
 		time_text = None;
 		time_template = 'time = %.1fs';
+		xllim = self.plot_properties.origin[0] - self.plot_properties.bounds / 2;
+		xhlim = self.plot_properties.origin[0] + self.plot_properties.bounds / 2;
+		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
+		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
 
 		def setup():
 			nonlocal time_text, time_template;
@@ -337,36 +376,36 @@ class Environment(Body_list):
 			init_func=setup, interval=1000 / fps , repeat=False, blit=True);
 
 		# set axis properties
-		# self.axes.set_title('Simulation Window');
 		self.axes.axis('square');
+		self.axes.set_xlim(xllim, xhlim);
+		self.axes.set_ylim(yllim, yhlim);
+		self.axes.set_xlim();
 		self.axes.autoscale(False);
 		self.axes.axis('off');
-		self.axes.set_xlim(-self.get_xbound(),self.get_xbound());
-		self.axes.set_ylim(-self.get_xbound(),self.get_xbound());
+
 
 		pyplot.show();
 
 	# call Signature:
-	## set_simulation_opts(timestep=<timestep>, markersize=<markersize>,
-	##       fps=<fps>, xbound=<xbound>, ybound=<ybound>, [,bounds=<bounds>],
-	##       trace=<trace>)
+	## set_simulation_opts(timestep=<timestep>, fps=<fps>, radius=<radius>,
+	##       bounds=<bounds>, origin=<[x0, y0]>, trace=<trace>)
 	def set_simulation_opts(self, **opts):
 		for key in opts.keys():
 			if(type(key) is str):
 				if(key == 'timestep' or key == 'tdelta' or key == 'ts'):
 					self.set_timestep(opts[key]);
-				elif(key == 'markersize' or key == 'ms'):
-					self.set_markersize(opts[key]);
 				elif(key == 'fps'):
 					self.set_fps(opts[key]);
-				elif(key == 'xbound' or key == 'xlim'):
-					self.set_xbound(opts[key]);
-				elif(key == 'ybound' or key == 'ylim'):
-					self.set_xbound(opts[key]);
-				elif(key == 'bounds' or key == 'lims'):
+				elif(key == 'radius'):
+					self.set_radius(opts[key]);
+				elif(key == 'bound' or key == 'lim' or key == 'limit' or key == 'axis_limit'):
 					self.set_bounds(opts[key]);
+				elif(key == 'origin' or key == 'center' or key == 'centre'):
+					self.set_origin(opts[key]);
 				elif(key == 'trace' or key == 'tr' or key == 'trace_length'):
 					self.set_plot_trace(opts[key]);
+				elif(key == 'G'):
+					self.set_gravitational_constant(opts[key]);
 				else:
 					raise IndexError(f"Invalid Key Value \'{key}\'");
 			else:
@@ -375,69 +414,61 @@ class Environment(Body_list):
 	def set_timestep(self, timestep):
 		self.plot_properties.timestep = numpy.double(timestep);
 
-	def set_markersize(self, size):
-		self.plot_properties.markersize = numpy.double(size);
-
 	def set_fps(self, fps):
 		self.plot_properties.fps = numpy.double(fps);
 
-	def set_xbound(self, lim):
-		self.plot_properties.xbound = numpy.double(lim);
-
-	def set_ybound(self, lim):
-		self.plot_properties.ybound = numpy.double(lim);
+	def set_radius(self, radius):
+		self.plot_properties.radius = numpy.double(radius);
 
 	def set_bounds(self, lim):
-		self.set_xbound(lim);
-		self.set_ybound(lim);
+		self.plot_properties.bounds = numpy.double(lim);
+
+	def set_origin(self, origin):
+		self.plot_properties.origin = numpy.array(origin);
+		numpy.reshape(self.plot_properties.origin, 2);
 
 	def set_plot_trace(self, trace):
 		self.plot_properties.trace_length = numpy.double(trace);
 
-	def get_timestep(self):
-		return self.plot_properties.timestep
+	def set_gravitational_constant(self, Num):
+		self.G = numpy.double(Num);
 
-	def get_markersize(self):
-		return self.plot_properties.markersize
+	def get_timestep(self):
+		return self.plot_properties.timestep;
 
 	def get_fps(self):
-		return self.plot_properties.fps
+		return self.plot_properties.fps;
 
-	def get_xbound(self):
-		return self.plot_properties.xbound
+	def get_radius(self):
+		return self.plot_properties.radius;
 
-	def get_ybound(self):
-		return self.plot_properties.ybound
+	def get_bounds(self):
+		return self.plot_properties.bounds;
 
-	def set_gravitational_constant(self, Num):
-		global G;
-		G = numpy.double(Num);
+	def get_origin(self):
+		return self.plot_properties.origin;
 
 	def get_gravitational_constant(self):
-		global G;
-		return G;
+		return self.G;
 
 # Helper class for computations
 class _Compute(Environment):
 	# perform a shallow copy of the Environment instance
 	def __init__(self, Env):
 		#initialise the Body_list members.
-		self.body_list   = Env.body_list;
+		self.body_list         = Env.body_list;
 
 		# initialise Environment members
 		self.figure, self.axes = Env.figure, Env.axes;
-		self.plot_properties = Env.plot_properties;
+		self.plot_properties   = Env.plot_properties;
 
-		# Fix min mass for an instance
-		self._min_mass = Env.min_mass();
+		# Fix min mass
+		self._min_mass         = min(body.mass for body in self.body_list);
 
 		# redundant
 		assert self.body_list is Env.body_list;
 
-	# experimental value!!
-	# for calcluateing the radius;
-	A = numpy.double(12345);
-
+	# generator to get a list of all other bodies
 	def every_other_body(self, body):
 		n = int(0);
 
@@ -447,9 +478,11 @@ class _Compute(Environment):
 				yield bd;
 			n += 1;
 
+	# return the least massive body's mass
 	def min_mass(self):
 		return self._min_mass;
 
+	# merge bodies bd1 and bd2 so that momentum is conserved
 	def merge_two_bodies(self, bd1, bd2):
 		if (bd1 is bd2):
 			raise ValueError("Cannot merge the same body onto itself");
@@ -473,12 +506,11 @@ class _Compute(Environment):
 
 		return bd;
 
-	def markersize(self, body):
-		return (body.mass / self.min_mass()) ** (2 / 3) * self.get_markersize();
-
+	# get the radius of a body
 	def radius(self, body):
-		return (body.mass / self.min_mass()) ** (1 / 3) * numpy.sqrt(self.get_markersize() / self.A);
+		return body.radius;
 
+	# return true if bd1 and bd2 overlap
 	def two_bodies_overlap(self, bd1, bd2):
 		norm   = numpy.linalg.norm;
 
@@ -489,6 +521,7 @@ class _Compute(Environment):
 			return True;
 		return False;
 
+	# change the inertial frame
 	def change_intertial_frame(self, velocity):
 		velocity = numpy.array(velocity, dtype=numpy.double);
 		numpy.reshape(velocity,2);
@@ -496,6 +529,7 @@ class _Compute(Environment):
 		for body in self:
 			body.velocity -= velocity;
 
+	# return velocity such that there is no net momentum
 	def zero_momentum_frame(self):
 		Mass = numpy.double(0);
 		velocity = numpy.zeros(2);
@@ -504,6 +538,13 @@ class _Compute(Environment):
 			Mass += body.mass;
 			velocity += body.mass * body.velocity;
 		return (1/Mass) * velocity;
+
+	# adjust the radius relative to settings
+	def adjust_radius(self):
+		for body in self:
+			if (not body._Costom_radius):
+				body.radius = (body.mass / self._min_mass) ** 0.5 * \
+					self.plot_properties.radius;
 
 	# this routine will setup the bodies up for simulation, Specifically:
 	## overlapping bodies are merged...
@@ -517,7 +558,7 @@ class _Compute(Environment):
 		self.change_intertial_frame(self.zero_momentum_frame());
 
 	def populate_acceleration_data(self):
-		global G;
+		G = self.plot_properties.G;
 		norm  = numpy.linalg.norm;
 
 		for body in self.body_list:
@@ -528,13 +569,15 @@ class _Compute(Environment):
 				for bd in self.every_other_body(body));
 
 	def _collision_handler(self, body):
+		# breakpoint();
 		for bd in self.every_other_body(body):
 			if(self.two_bodies_overlap(body, bd)):
 				self.merge_two_bodies(body,bd);
-		self.change_intertial_frame(self.zero_momentum_frame());
+		# breakpoint();
+		# self.change_intertial_frame(self.zero_momentum_frame());
 
 	def update_bodies(self):
-		global G;
+		G = self.plot_properties.G;
 		norm   = numpy.linalg.norm;
 		power  = numpy.power;
 		tDelta = self.get_timestep();
@@ -560,7 +603,6 @@ class _Compute(Environment):
 	def plot_bodies(self):
 		artists = [];
 		circles  = [];
-		min_mass = self.min_mass();
 
 		for body in self:
 			if (len(body.xtrace) < self.plot_properties.trace_length):
@@ -580,11 +622,3 @@ class _Compute(Environment):
 			matplotlib.collections.PatchCollection(circles, match_original=True)));
 
 		return artists;
-
-	## If you don't want the trace to show up in Environment.draw(), uncomment this
-	# def __del__(self):
-	# 		for body in self:
-	# 			if(hasattr(body, 'trace')):
-	# 				del body.trace;
-	# 				del body.xtrace;
-	# 				del body.ytrace;
