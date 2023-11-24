@@ -77,7 +77,7 @@ class Body:
 			elif (key == 'position'):
 				self.position     = Body._set_vector(value);
 			else:
-				raise IndexError("Invalid Key value");
+				raise IndexError("Invalid Key value: \'{key}\'");
 		else:
 			raise TypeError("Key must be a string value");
 
