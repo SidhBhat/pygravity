@@ -11,7 +11,8 @@ import pdb
 class Zero_MassERROR(Exception):
 	pass;
 
-# Not meant to be used directly
+
+# Basic class representing a physical body
 class Body:
 	def _set_vector(vec_like):
 		vec = numpy.array(vec_like, dtype=numpy.double);
@@ -35,14 +36,14 @@ class Body:
 		self.mass     = numpy.double(mass);
 		self.name     = name;
 		self.color    = color;
-		self._Costom_radius = False;
+		self._Custom_radius = False;
 
 		# special behaviour
 		if (type(radius) is str):
 			self.radius   = numpy.double(1);
 		else:
 			self.radius   = numpy.double(radius);
-			self._Costom_radius = True;
+			self._Custom_radius = True;
 
 
 	def __str__(self):
@@ -93,7 +94,7 @@ class Body:
 			elif (key == 'radius'):
 				if (value):
 					self.radius = numpy.double(value);
-					self._Costom_radius = True;
+					self._Custom_radius = True;
 				else:
 					raise TypeError("The radius of a body cannot be zero");
 			elif (key == 'position'):
@@ -103,7 +104,12 @@ class Body:
 		else:
 			raise TypeError("Key must be a string value");
 
-# Not meant to be used directly
+	def set_parameters(self, **params):
+		for key in params.keys():
+			self.__setitem__(key, params[key]);
+
+
+# Body with position, velocity and acceleration
 class Dynamic_Body(Body):
 	def __init__(self,
 			name         = "Body",
@@ -127,7 +133,6 @@ class Dynamic_Body(Body):
 	def update_position(self, tDelta):
 		self.position += \
 			(self.velocity + self._half * self.acceleration * tDelta) * tDelta;
-		# self.position += self.velocity * tDelta;
 
 	def __str__(self):
 		return format({
@@ -183,7 +188,7 @@ class Dynamic_Body(Body):
 			elif (key == 'radius'):
 				if (value):
 					self.radius = numpy.double(value);
-					self._Costom_radius = True;
+					self._Custom_radius = True;
 				else:
 					raise TypeError("The radius of a body cannot be zero");
 			elif (key == 'position'):
@@ -197,20 +202,23 @@ class Dynamic_Body(Body):
 		else:
 			raise TypeError("Key must be a string value");
 
-# Iterable containing all bodies
+	def set_parameters(self, **params):
+		for key in params.keys():
+			self.__setitem__(key, params[key]);
+
+
+# Iterable containing a list of bodies
 class Body_list:
-	"""argument to __init__ 'body_list' is a list of dictionaries of the form:
+	"""argument to __init__ 'Body_list' is a list of dictionaries of the form:
 	{
 	'name':     "<name>",   # a string
-	'color':    '<color>',  # single character
-	'mass':     <mass>,
+	'color':    "<color>",  # single character
+	'radius':    <radius>,
 	'position': [<x_pos>, <y_pos>],
 	'velocity': [<x_vel>, <y_vel>]
 	}
 	"""
-	def __init__(self,
-			*body_list # Expects a list of dictionaries
-			):
+	def __init__(self, *body_list): # Expects a list of dictionaries
 		self.body_list = [];
 
 		n = int(1);
@@ -242,10 +250,10 @@ class Body_list:
 		if (type(body_id) is str):
 			index_list = [];
 			n = int(0);
-			for body in self.body_list:
+			for body in self:
 				if (body.name == body_id):
 					index_list.append(n);
-				n += 1;
+				n += int(1);
 			if (not len(index_list)):
 				raise ValueError(f"Body with name \'{body_id}\' not found");
 			index_list.sort(reverse=True);
@@ -255,6 +263,36 @@ class Body_list:
 			self.body_list.pop(body_id);
 		else:
 			raise IndexError(f"Specifed body_id \'{body_id}\' not found");
+
+	def get_body(self, body_id, get_index=False):
+		get_index  = bool(get_index);
+		index_list = [];
+		if (type(body_id) is str):
+			n = int(0);
+			for body in self:
+				if (body_id == body.name):
+					index_list.append(n);
+				n += int(1);
+			if (len(index_list)):
+				if (len(index_list) == 1):
+					if (get_index):
+						return index_list[0];
+					else:
+						return self[index_list[0]];
+				else:
+					if (get_index):
+						return index_list;
+					else:
+						body_list = [];
+						for index in index_list:
+							body_list.append(self[index]);
+						ret_val = Body_list()
+						ret_val.body_list = body_list;
+						return ret_val;
+			else:
+				raise ValueError(f"Body with name \'{body_id}\' not found");
+		elif (type(body_id) is int):
+			return self[index];
 
 	def __len__(self):
 		return len(self.body_list);
@@ -281,20 +319,23 @@ class Body_list:
 	def __iter__(self):
 		return self._Iterator(self);
 
+
 # Plot and simulation environment
 class Environment(Body_list):
-	"""argument to __init__ 'body_list' is a list of dictionaries of the form:
+	"""argument to __init__ 'Environment' is a list of dictionaries of the form:
 	{
-	'name':     "<name>",   # a string (optional)
-	'color':    '<color>',  # single character (optional)
-	'mass':     <mass>,
-	'position': [x_pos, y_pos],
-	'velocity': [x_vel, y_vel],
+	'name':     "<name>",   # a string
+	'color':    "<color>",  # single character
+	'radius':    <radius>,
+	'position': [<x_pos>, <y_pos>],
+	'velocity': [<x_vel>, <y_vel>]
 	}
 	"""
 	def __init__(self,
-			*body_list # Expects a list of dictionaries
-			):
+			*body_list, # Expects a list of dictionaries
+			**plot_properties):
+
+		# initialise Body_list
 		if (len(body_list)):
 			Body_list.__init__(self, *body_list);
 		else:
@@ -303,6 +344,7 @@ class Environment(Body_list):
 		# initialise data members
 		self.figure, self.axes = (None, None);
 		self.plot_properties = self._Plot_properties();
+		self.set_simulation_opts(**plot_properties);
 
 	class _Plot_properties:
 		#default values
@@ -321,112 +363,9 @@ class Environment(Body_list):
 			# Lock onto a body
 			self.frame_lockon = None;
 
-	def draw(self, **properties):
-		self.figure, self.axes = pyplot.subplots(1,1);
-		self.set_simulation_opts(**properties);
-		xllim = self.plot_properties.origin[0] - self.plot_properties.bounds / 2;
-		xhlim = self.plot_properties.origin[0] + self.plot_properties.bounds / 2;
-		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
-		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
-
-		compute = _Compute(self);
-		# compute.populate_acceleration_data();
-		compute.setup_bodies();
-		compute.plot_setup();
-		compute.plot_bodies();
-
-		# set axis properties
-		self.axes.axis('square');
-		self.axes.set_xlim(xllim, xhlim);
-		self.axes.set_ylim(yllim, yhlim);
-		self.axes.autoscale(False);
-		self.axes.axis('off');
-
-		pyplot.show();
-
-	# alias functions
-	show = draw;
-
-	def simulate(self, time, **properties):
-		self.set_simulation_opts(**properties);
-		self.figure, self.axes = pyplot.subplots(1,1);
-		compute                = _Compute(self);
-		xllim = self.plot_properties.origin[0] - self.plot_properties.bounds / 2;
-		xhlim = self.plot_properties.origin[0] + self.plot_properties.bounds / 2;
-		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
-		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
-		time_template = 'time = %.1fs';
-		timestep      = self.get_timestep();
-		fps           = self.get_fps();
-		time_text     = None;
-		time_data     = [];
-		time_parametr = []
-		momentum         = []
-		energy           = []
-		potential_energy = []
-		kinetic_energy   = []
-		angular_momentum = []
-
-
-		def setup():
-			nonlocal time_text, time_template, compute;
-			compute.setup_bodies();
-			compute.plot_setup();
-			time_text = self.axes.text(0.05, 0.9, (time_template % 0.0),
-							  transform = self.axes.transAxes);
-			artists = compute.plot_bodies();
-			artists.append(time_text);
-			return artists;
-
-		def animate(frame_data):
-			nonlocal compute, time_data;
-			start = timer();
-			compute.update_bodies(1 / fps);
-			time_text.set_text(time_template % (frame_data / fps));
-			artists = compute.plot_bodies();
-			artists.append(time_text);
-			time_parametr.append((frame_data / fps));
-			momentum.append(compute.momentum());
-			energy.append(compute.energy())
-			potential_energy.append(compute.potential_energy())
-			kinetic_energy.append(compute.kinetic_energy())
-			angular_momentum.append(compute.angular_momentum())
-			end = timer();
-			time_data.append(end - start);
-			return artists;
-
-		if(self.get_fps()*self.get_timestep() >= numpy.double(1)):
-			raise ValueError(f"timestep \'{timestep}\' is too large")
-
-		ani = FuncAnimation(self.figure, animate, numpy.arange(1, fps*time, dtype=numpy.double),
-			init_func=setup, interval=1000 / fps, repeat=False, blit=True);
-
-		# set axis properties
-		self.axes.axis('square');
-		self.axes.set_xlim(xllim, xhlim);
-		self.axes.set_ylim(yllim, yhlim);
-		self.axes.autoscale(False);
-		self.axes.axis('off');
-
-		pyplot.show();
-
-		self.figure, self.axes = pyplot.subplots(1,1);
-		self.axes.plot(time_parametr, momentum, label="momentum");
-		self.axes.plot(time_parametr, angular_momentum, label="angular_momentum");
-		self.axes.plot(time_parametr, potential_energy, label="potential_energy");
-		self.axes.plot(time_parametr, kinetic_energy, label="kinetic_energy");
-		self.axes.plot(time_parametr, energy, label="total energy");
-
-		self.axes.grid();
-		self.axes.legend()
-
-		pyplot.show();
-
-		print(f"Average Time for main loop: {sum(time_data) / len(time_data)}")
-
 	# call Signature:
 	## set_simulation_opts(timestep=<timestep>, fps=<fps>, radius=<radius>,
-	##       bounds=<bounds>, origin=<[x0, y0]>, trace=<trace>)
+	##       bounds=<bounds>, origin=<[x0, y0]>, trace=<trace>, lock=<body>)
 	def set_simulation_opts(self, **opts):
 		for key in opts.keys():
 			if(type(key) is str):
@@ -444,6 +383,8 @@ class Environment(Body_list):
 					self.set_plot_trace(opts[key]);
 				elif(key == 'G'):
 					self.set_gravitational_constant(opts[key]);
+				elif(key == 'G'):
+					self.lock_frame_on();
 				else:
 					raise IndexError(f"Invalid Key Value \'{key}\'");
 			else:
@@ -498,6 +439,159 @@ class Environment(Body_list):
 				return;
 		raise ValueError("Body is not contained in Environment");
 
+	def unlock_frame(self):
+		self.plot_properties.frame_lockon = None;
+
+	def show(self, **properties):
+		# initialise figure
+		self.figure, self.axes = pyplot.subplots(1,1);
+		self.set_simulation_opts(**properties);
+		# set plot window limits
+		xllim = self.plot_properties.origin[0] - self.plot_properties.bounds / 2;
+		xhlim = self.plot_properties.origin[0] + self.plot_properties.bounds / 2;
+		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
+		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
+
+		# initialise _Compute instance
+		compute = _Compute(self);
+		# plot
+		compute.setup_bodies();
+		compute.plot_setup();
+		compute.plot_bodies();
+
+		# set axis properties
+		self.axes.axis('square');
+		self.axes.set_xlim(xllim, xhlim);
+		self.axes.set_ylim(yllim, yhlim);
+		self.axes.autoscale(False);
+		self.axes.axis('off');
+
+		pyplot.show();
+
+	# alias functions
+	draw = show;
+
+	def simulate(self, time, plot_simulation_result=False, **properties):
+		# initialise figure
+		self.set_simulation_opts(**properties);
+		self.figure, self.axes = pyplot.subplots(1,1);
+		# initialise _Compute instance
+		compute = _Compute(self);
+
+		# set plot window limits
+		xllim = self.plot_properties.origin[0] - self.plot_properties.bounds / 2;
+		xhlim = self.plot_properties.origin[0] + self.plot_properties.bounds / 2;
+		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
+		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
+
+		time_template = 'time = %.1fs';
+		timestep      = self.get_timestep();
+		fps           = self.get_fps();
+		time_text     = None;
+		time_data     = [];
+
+		if(fps * timestep >= numpy.double(1)):
+			raise ValueError(f"timestep \'{timestep}\' is too large")
+
+		class Simulation_Data:
+			def __init__(self):
+				self.time_parameter   = [];
+				self.momentum         = [];
+				self.angular_momentum = [];
+				self.energy           = [];
+				self.potential_energy = [];
+				self.kinetic_energy   = [];
+
+			def plot(self):
+				# initialise figure
+				self.figure, self.axes = pyplot.subplots(1,1);
+				# plot data
+				self.axes.plot(self.time_parameter,
+				   self.momentum, label="total momentum");
+				self.axes.plot(self.time_parameter,
+				   self.angular_momentum, label="total angular_momentum");
+				self.axes.plot(self.time_parameter,
+				   self.potential_energy, label="potential_energy");
+				self.axes.plot(self.time_parameter,
+				   self.kinetic_energy, label="kinetic_energy");
+				self.axes.plot(self.time_parameter,
+				   self.energy, label="total energy");
+				# set axis properties
+				self.axes.grid();
+				self.axes.legend()
+
+				pyplot.show();
+
+		def setup():
+			nonlocal time_text, time_template, compute;
+			# setup plot
+			compute.setup_bodies();
+			compute.plot_setup();
+			# add time text
+			time_text = self.axes.text(0.05, 0.9, (time_template % 0.0),
+							transform = self.axes.transAxes);
+			artists = compute.plot_bodies();
+			artists.append(time_text);
+			return artists;
+
+		if (bool(plot_simulation_result)):
+			# initialise info panel
+			info_panel = Simulation_Data();
+
+			def animate(frame_data):
+				nonlocal compute, time_text;
+				start = timer();
+				# plot bodies
+				compute.update_bodies(1 / fps);
+				# update time text
+				time_text.set_text(time_template % (frame_data / fps));
+				# update artists
+				artists = compute.plot_bodies();
+				artists.append(time_text);
+				# collect simulation data
+				info_panel.time_parameter.append(frame_data / fps);
+				info_panel.momentum.append(compute.total_momentum());
+				info_panel.angular_momentum.append(compute.total_angular_momentum());
+				info_panel.kinetic_energy.append(compute.total_kinetic_energy());
+				info_panel.potential_energy.append(compute.total_potential_energy());
+				info_panel.energy.append(compute.total_energy())
+				# collect simulation time
+				time_data.append(timer() - start);
+				return artists;
+		else:
+			def animate(frame_data):
+				nonlocal compute, time_text;
+				start = timer();
+				# plot bodies
+				compute.update_bodies(1 / fps);
+				# update time text
+				time_text.set_text(time_template % (frame_data / fps));
+				# update artists
+				artists = compute.plot_bodies();
+				artists.append(time_text);
+				# collect simulation time
+				time_data.append(timer() - start);
+				return artists;
+
+		ani = FuncAnimation(self.figure, animate, numpy.arange(1, fps*time, dtype=numpy.double),
+			init_func=setup, interval=1000 / fps, repeat=False, blit=True);
+
+		# set axis properties
+		self.axes.axis('square');
+		self.axes.set_xlim(xllim, xhlim);
+		self.axes.set_ylim(yllim, yhlim);
+		self.axes.autoscale(False);
+		self.axes.axis('off');
+
+		pyplot.show();
+
+		if(bool(plot_simulation_result)):
+			info_panel.plot();
+
+		print(f"Mean time taken to simulate one frame:\t{sum(time_data) / len(time_data)}");
+		print(f"Time between frames as per fps setting:\t{1 / fps}");
+
+
 # Helper class for computations
 class _Compute(Environment):
 	# perform a shallow copy of the Environment instance
@@ -512,11 +606,13 @@ class _Compute(Environment):
 		# Fix min mass
 		self._min_mass         = min(body.mass for body in self.body_list);
 
-		# a temporary variable
-		self._tmp_scalar = numpy.double(0);
-
 		# redundant
 		assert self.body_list is Env.body_list;
+		assert self.figure    is Env.figure;
+		assert self.axes      is Env.axes
+		assert self.plot_properties  is Env.plot_properties;
+
+	## Method for global manipulation
 
 	# generator to get a list of all other bodies
 	def every_other_body(self, body):
@@ -532,7 +628,71 @@ class _Compute(Environment):
 	def min_mass(self):
 		return self._min_mass;
 
-	# merge bodies bd1 and bd2 so that momentum is conserved
+	# return velocity such that there is no net momentum
+	def zero_momentum_frame(self):
+		Mass = numpy.double(0);
+		velocity = numpy.zeros(2);
+
+		for body in self:
+			Mass += body.mass;
+			velocity += body.mass * body.velocity;
+		return (1/Mass) * velocity;
+
+	# populate acceleration data with respect to frame of referance
+	def populate_acceleration_data(self):
+		for body in self:
+			self.update_acceleration(body);
+
+	# adjust the radius relative to minimum mass
+	def adjust_radii(self):
+		for body in self:
+			if (not body._Custom_radius):
+				body.radius = (body.mass / self._min_mass) ** 0.5 * \
+					self.plot_properties.radius;
+
+	# change the inertial frame by velocity (w.r.t current frame)
+	def change_intertial_frame(self, velocity):
+		velocity = numpy.array(velocity, dtype=numpy.double);
+		numpy.reshape(velocity,2);
+
+		for body in self:
+			body.velocity -= velocity;
+
+	def total_potential_energy(self):
+		return sum(self.get_potential_energy(body) for body in self);
+
+	def total_kinetic_energy(self):
+		norm   = numpy.linalg.norm;
+		return sum(body.mass * norm(body.velocity) ** 2 / 2 for body in self);
+
+	def total_energy(self):
+		return self.total_potential_energy() + self.total_kinetic_energy();
+
+	def total_angular_momentum(self):
+		return sum(body.mass * _Compute._cross(body.position, body.velocity) for body in self);
+
+	def total_momentum(self):
+		norm   = numpy.linalg.norm;
+		return norm(sum(body.mass * body.velocity for body in self));
+
+	## methods for manipulating and getting information on indivisual bodies
+
+	# get the radius of a body
+	def radius(self, body):
+		return body.radius;
+
+	# return true if bd1 and bd2 overlap
+	def two_bodies_overlap(self, bd1, bd2):
+		norm = numpy.linalg.norm;
+
+		if (bd1 is bd2):
+			raise ValueError("Cannot calculate overlap for the same body");
+
+		if (norm(bd1.position - bd2.position) <= self.radius(bd1) + self.radius(bd2)):
+			return True;
+		return False;
+
+	# merge bodies bd1 and bd2 d in a perfectly inelastic collision (momentum conseving)
 	def merge_two_bodies(self, bd1, bd2):
 		if (bd1 is bd2):
 			raise ValueError("Cannot merge the same body onto itself");
@@ -560,57 +720,7 @@ class _Compute(Environment):
 
 		return bd;
 
-	# get the radius of a body
-	def radius(self, body):
-		return body.radius;
-
-	# return true if bd1 and bd2 overlap
-	def two_bodies_overlap(self, bd1, bd2):
-		norm   = numpy.linalg.norm;
-
-		if (bd1 is bd2):
-			raise ValueError("Cannot calculate overlap for the same body");
-
-		if (norm(bd1.position - bd2.position) <= self.radius(bd1) + self.radius(bd2)):
-			return True;
-		return False;
-
-	# change the inertial frame
-	def change_intertial_frame(self, velocity):
-		velocity = numpy.array(velocity, dtype=numpy.double);
-		numpy.reshape(velocity,2);
-
-		for body in self:
-			body.velocity -= velocity;
-
-	# return velocity such that there is no net momentum
-	def zero_momentum_frame(self):
-		Mass = numpy.double(0);
-		velocity = numpy.zeros(2);
-
-		for body in self:
-			Mass += body.mass;
-			velocity += body.mass * body.velocity;
-		return (1/Mass) * velocity;
-
-	# adjust the radius relative to settings
-	def adjust_radius(self):
-		for body in self:
-			if (not body._Costom_radius):
-				body.radius = (body.mass / self._min_mass) ** 0.5 * \
-					self.plot_properties.radius;
-
-	# get acceleration of body irrespective of referance frame (non-inertial)
-	def get_acceleration(self, body):
-		G = self.plot_properties.G;
-		norm   = numpy.linalg.norm;
-		power  = numpy.power;
-
-		# assumes sum calles the appropriate numpy method!!
-		return sum((G * bd.mass / power(norm(bd.position - body.position),3)) * \
-						(bd.position - body.position)
-						for bd in self.every_other_body(body));
-
+	# return the potential energy of a body
 	def get_potential_energy(self, body):
 		G = self.plot_properties.G;
 		norm   = numpy.linalg.norm;
@@ -619,6 +729,18 @@ class _Compute(Environment):
 		return -body.mass * sum(G * bd.mass / norm(bd.position - body.position)
 						  for bd in self.every_other_body(body));
 
+	# get acceleration of body irrespective of referance frame (non-inertial)
+	def get_acceleration(self, body):
+		G = self.plot_properties.G;
+		norm   = numpy.linalg.norm;
+		power  = numpy.power;
+
+		return sum((G * bd.mass / power(norm(bd.position - body.position),3)) * \
+						(bd.position - body.position)
+						for bd in self.every_other_body(body));
+
+	# update the acceleration on agiven body
+	## respects non inertial frames which are locked to a specific body
 	def update_acceleration(self, body):
 		locked_body = self.plot_properties.frame_lockon;
 		G           = self.plot_properties.G;
@@ -626,9 +748,9 @@ class _Compute(Environment):
 		power       = numpy.power;
 
 		if (body is locked_body):
-				body.acceleration = numpy.array([0,0]);
+				body.acceleration = numpy.array([0,0], dtype=numpy.double);
 				return;
-		# assumes sum calles the appropriate numpy method!!
+
 		body.acceleration = \
 					sum((G * bd.mass / power(norm(bd.position - body.position),3)) * \
 					(bd.position - body.position)
@@ -636,38 +758,13 @@ class _Compute(Environment):
 		if (not (type(locked_body) is NoneType)):
 			body.acceleration -= self.get_acceleration(locked_body);
 
-	# populate acceleration data with respect to frame of referance
-	def populate_acceleration_data(self):
-		# breakpoint();
-		G = self.plot_properties.G;
-		locked_body  = self.plot_properties.frame_lockon;
-		norm  = numpy.linalg.norm;
-
-		if (type(locked_body) is NoneType):
-			for body in self:
-				body.acceleration = self.get_acceleration(body);
-		else:
-			frame_acceleration = self.get_acceleration(locked_body)
-			for body in self.every_other_body(locked_body):
-				body.acceleration = self.get_acceleration(body) - frame_acceleration;
-			locked_body.acceleration = numpy.array([0,0], dtype=numpy.double);
-
-	# routine for handling collisions
-	def _collision_handler(self, body):
-		for bd in self.every_other_body(body):
-			if(self.two_bodies_overlap(body, bd)):
-				self.merge_two_bodies(body,bd);
-
-		if (type(self.plot_properties.frame_lockon) is NoneType):
-			self.change_intertial_frame(self.zero_momentum_frame());
-		else:
-			self.change_intertial_frame(self.plot_properties.frame_lockon.velocity);
-			self.plot_properties.frame_lockon.velocity = numpy.array([0,0], dtype=numpy.double);
-			self.plot_properties.frame_lockon.acceleration = numpy.array([0,0], dtype=numpy.double);
-
+	## Vector manipulation
 	def _dot(vec1, vec2):
 		# breakpoint();
 		return vec1[0] * vec2[0] + vec1[1] * vec2[1];
+
+	def _cross(vec1, vec2):
+		return vec1[0] * vec2[1] - vec1[1] * vec2[0];
 
 	def _set_vec_length(vec, length):
 		norm   = numpy.linalg.norm;
@@ -676,31 +773,35 @@ class _Compute(Environment):
 		else:
 			raise ValueError("Vector is zero");
 
+	## Simulation Methods
+
+	# the referance frame is set to center of mass if frame lock is unspecified
+	# else it is locked to a specific body (non inertial)
+	def _refresh_referance_frame(self):
+		if (type(self.plot_properties.frame_lockon) is NoneType):
+			self.change_intertial_frame(self.zero_momentum_frame());
+		else:
+			self.change_intertial_frame(
+				self.plot_properties.frame_lockon.velocity);
+			self.plot_properties.frame_lockon.acceleration = \
+				numpy.array([0,0], dtype=numpy.double);
+			self.plot_properties.frame_lockon.velocity     = \
+				numpy.array([0,0], dtype=numpy.double);
+
+	# routine for handling collisions
+	def _collision_handler(self, body):
+		for bd in self.every_other_body(body):
+			if(self.two_bodies_overlap(body, bd)):
+				self.merge_two_bodies(body,bd);
+				self._refresh_referance_frame();
+
+	# update body
 	def _update_body(self, body, tDelta):
-		norm   = numpy.linalg.norm;
-		power  = numpy.power;
-		sqrt   = numpy.sqrt;
-
-		v      = body.velocity;
-		DU     = self.get_potential_energy(body);
-
+		self.update_acceleration(body);
 		body.update_position(tDelta);
 		body.update_velocity(tDelta);
 
-		DU     = self.get_potential_energy(body) - DU;
-
-		# if (body.velocity.any()):
-		# 	# breakpoint();
-		# 	va        = _Compute._dot(v, body.velocity) / norm(body.velocity);
-		# else:
-		# 	va        = numpy.double(0);
-		v             = norm(v);
-		assert not numpy.isnan(v);
-		# print(f"Old velocity:{v}\nNew velocity:{sqrt(power(v,2) + 2 * DU / body.mass)}");
-		print(f"{power(v,2) + 2 * DU / body.mass}")
-		body.velocity = \
-			_Compute._set_vec_length(body.velocity, sqrt(power(v,2) + 2 * DU / body.mass));
-
+	# update body using RK4 (Classical Runge Kutta)
 	def _update_body_RK4(self, body, tDelta):
 		initial_position = body.position;
 		initial_velocity = body.velocity;
@@ -721,12 +822,10 @@ class _Compute(Environment):
 
 		def get_velocity(tDelta, acceleration):
 			nonlocal initial_velocity;
-
 			return initial_velocity + tDelta * acceleration;
 
 		def get_position(tdelta, velocity, acceleration):
 			nonlocal initial_position;
-
 			return initial_position + tDelta * (velocity + acceleration * tDelta / 2);
 
 		k1 = get_acceleration(initial_position);
@@ -744,45 +843,47 @@ class _Compute(Environment):
 		body.position = initial_position + tDelta/6 * (l1 + 2*l2 + 2*l3 + l4);
 		body.velocity = initial_velocity + tDelta/6 * (k1 + 2*k2 + 2*k3 + k4);
 
-
 	# this routine will setup the bodies up for simulation, Specifically:
 	## overlapping bodies are merged...
-	## the intertial frame is set to the net zero momentum frame
+	## the intertial frame is set to the net zero momentum frame (if applicable)
 	def setup_bodies(self):
-		self.adjust_radius();
+		self.adjust_radii();
 		for body in self:
 			for bd in self.every_other_body(body):
 				if(self.two_bodies_overlap(body,bd)):
 					self.merge_two_bodies(body,bd);
 		self.populate_acceleration_data();
+		self._refresh_referance_frame();
 
-		if (type(self.plot_properties.frame_lockon) is NoneType):
-			self.change_intertial_frame(self.zero_momentum_frame());
-		else:
-			self.change_intertial_frame(self.plot_properties.frame_lockon.velocity);
-			self.plot_properties.frame_lockon.acceleration = numpy.array([0,0], dtype=numpy.double);
-			self.plot_properties.frame_lockon.velocity     = numpy.array([0,0], dtype=numpy.double);
-
+	# update body to it's position t=time in the future
 	def update_bodies(self, time):
-		G = self.plot_properties.G;
-		locked_body = self.plot_properties.frame_lockon;
-		norm   = numpy.linalg.norm;
-		power  = numpy.power;
 		tDelta = self.get_timestep();
-		time   = numpy.double(time);
+		time   = numpy.abs(numpy.double(time));
 
 		t = numpy.double(0);
-
 		while (t < time):
 			for body in self:
 				self._collision_handler(body);
 			for body in self:
-				self.update_acceleration(body);
-				# self._update_body_RK4(body,tDelta);
-				body.update_position(tDelta);
-				body.update_velocity(tDelta);
+				self._update_body(body, tDelta);
 			t += tDelta;
 
+	# update body to it's position t=time in the future
+	def update_bodies_RK4(self, time):
+		tDelta = self.get_timestep();
+		time   = numpy.double(time);
+
+		t = numpy.double(0);
+		while (t < time):
+			for body in self:
+				self._collision_handler(body);
+			for body in self:
+				self._update_body(body, tDelta);
+			t += tDelta;
+
+	## plot methods
+
+	# setup plot
 	def plot_setup(self):
 		for body in self:
 			# prevent previous trace being erased
@@ -791,6 +892,7 @@ class _Compute(Environment):
 				body.ytrace = [];
 			body.trace, = self.axes.plot([],[], body.color+'.', lw=1, ms=1);
 
+	# update the frame
 	def plot_bodies(self):
 		artists = [];
 		circles  = [];
@@ -810,36 +912,6 @@ class _Compute(Environment):
 				)
 			artists.append(body.trace);
 		artists.append(self.axes.add_collection(
-			matplotlib.collections.PatchCollection(circles, match_original=True)));
+		matplotlib.collections.PatchCollection(circles, match_original=True)));
 
 		return artists;
-
-	def momentum(self):
-		norm   = numpy.linalg.norm;
-
-		return norm(sum(body.mass * body.velocity for body in self));
-
-	def potential_energy(self):
-		G = self.plot_properties.G;
-		norm   = numpy.linalg.norm;
-		power  = numpy.power;
-
-		return sum(body.mass * sum(-G * bd.mass / norm(bd.position - body.position)
-						  for bd in self.every_other_body(body))
-						  for body in self);
-
-	def kinetic_energy(self):
-		G = self.plot_properties.G;
-		norm   = numpy.linalg.norm;
-		power  = numpy.power;
-
-		return sum(body.mass / 2 * norm(body.velocity) ** 2 for body in self);
-
-	def energy(self):
-		return self.potential_energy() + self.kinetic_energy();
-
-	def _cross(vec1, vec2):
-		return vec1[0] * vec2[1] - vec1[1] * vec2[0];
-
-	def angular_momentum(self):
-		return sum(body.mass * _Compute._cross(body.position, body.velocity) for body in self);
