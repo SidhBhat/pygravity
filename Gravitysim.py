@@ -13,19 +13,20 @@ env = gravity.Environment();
 ## Collision test
 env.add_body(name='body 1',color='b',mass=200,position=[2,0],velocity=[0,0]);
 env.add_body(name='body 2',color='r',mass=200,position=[-2,0],velocity=[0,6]);
-# satelite = env.add_body(name='body 3',color='g',mass=50,position=[4,0],velocity=[-7,0.1]);
+satelite = env.add_body(name='body 3',color='g',mass=50,position=[4,0],velocity=[-7,0.1]);
 
 # env.add_body(name='black hole',color='k',mass=100000,radius=2,position=[0,0],velocity=[0,0]);
 # satelite = env.add_body(name='satelite',color='r',mass=10,position=[9,0],velocity=[0,105.5]);
 # env.add_body(name='satelite',color='b',mass=10,position=[-10,0],velocity=[0,90]);
 
 env.set_fps(60);
-env.set_radius(0.05);
-env.set_timestep(0.0005);
+env.set_radius(0.2);
+env.set_timestep(0.001);
 env.set_bounds(10);
-# env.set_origin(satelite['position']);
 env.set_origin([0,0]);
+# env.set_origin(satelite['position']);
 # env[0]['radius'] = 0.7;
+# env.set_radius(0.05);
 # env.lock_frame_on(satelite);
 
 # for bd in env:
@@ -33,13 +34,13 @@ env.set_origin([0,0]);
 
 env.draw();
 
-for bd in env:
-	print(bd);
+# for bd in env:
+# 	print(bd);
 
-env.simulate(1);
+env.simulate(10);
 
-for bd in env:
-	print(bd);
+# for bd in env:
+# 	print(bd);
 
 # env.draw();
 

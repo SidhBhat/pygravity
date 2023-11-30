@@ -125,9 +125,9 @@ class Dynamic_Body(Body):
 		self.velocity += self.acceleration * tDelta;
 
 	def update_position(self, tDelta):
-		# self.position += \
-		# 	(self.velocity + self._half * self.acceleration * tDelta) * tDelta;
-		self.position += self.velocity * tDelta;
+		self.position += \
+			(self.velocity + self._half * self.acceleration * tDelta) * tDelta;
+		# self.position += self.velocity * tDelta;
 
 	def __str__(self):
 		return format({
@@ -492,7 +492,11 @@ class Environment(Body_list):
 	def lock_frame_on(self, planet):
 		if(not (Body is type(planet) or Dynamic_Body is type(planet))):
 			raise TypeError(f"\'{planet}\' is not a body type")
-		self.plot_properties.frame_lockon = planet;
+		for body in self:
+			if (body is planet):
+				self.plot_properties.frame_lockon = planet;
+				return;
+		raise ValueError("Body is not contained in Environment");
 
 # Helper class for computations
 class _Compute(Environment):
@@ -616,15 +620,22 @@ class _Compute(Environment):
 						  for bd in self.every_other_body(body));
 
 	def update_acceleration(self, body):
-		G = self.plot_properties.G;
-		norm   = numpy.linalg.norm;
-		power  = numpy.power;
+		locked_body = self.plot_properties.frame_lockon;
+		G           = self.plot_properties.G;
+		norm        = numpy.linalg.norm;
+		power       = numpy.power;
 
+		if (body is locked_body):
+				body.acceleration = numpy.array([0,0]);
+				return;
 		# assumes sum calles the appropriate numpy method!!
 		body.acceleration = \
 					sum((G * bd.mass / power(norm(bd.position - body.position),3)) * \
 					(bd.position - body.position)
 					for bd in self.every_other_body(body));
+		if (not (type(locked_body) is NoneType)):
+			body.acceleration -= self.get_acceleration(locked_body);
+
 	# populate acceleration data with respect to frame of referance
 	def populate_acceleration_data(self):
 		# breakpoint();
@@ -690,6 +701,48 @@ class _Compute(Environment):
 		body.velocity = \
 			_Compute._set_vec_length(body.velocity, sqrt(power(v,2) + 2 * DU / body.mass));
 
+	def _update_body_RK4(self, body, tDelta):
+		initial_position = body.position;
+		initial_velocity = body.velocity;
+
+		def get_acceleration(position):
+			nonlocal self;
+			locked_body = self.plot_properties.frame_lockon;
+			G           = self.plot_properties.G;
+			norm        = numpy.linalg.norm;
+			power       = numpy.power;
+			acceleration = \
+				sum((G * bd.mass / power(norm(bd.position - position),3)) * \
+				(bd.position - position)
+				for bd in self.every_other_body(body));
+			if (not (type(locked_body) is NoneType)):
+				acceleration -= self.get_acceleration(locked_body);
+			return acceleration;
+
+		def get_velocity(tDelta, acceleration):
+			nonlocal initial_velocity;
+
+			return initial_velocity + tDelta * acceleration;
+
+		def get_position(tdelta, velocity, acceleration):
+			nonlocal initial_position;
+
+			return initial_position + tDelta * (velocity + acceleration * tDelta / 2);
+
+		k1 = get_acceleration(initial_position);
+		l1 = initial_velocity;
+
+		k2 = get_acceleration(get_position(tDelta / 2, l1, k1));
+		l2 = get_velocity(tDelta / 2, k1);
+
+		k3 = get_acceleration(get_position(tDelta / 2, l2, k2));
+		l3 = get_velocity(tDelta / 2, k2);
+
+		k4 = get_acceleration(get_position(tDelta, l3, k3));
+		l4 = get_velocity(tDelta, k3);
+
+		body.position = initial_position + tDelta/6 * (l1 + 2*l2 + 2*l3 + l4);
+		body.velocity = initial_velocity + tDelta/6 * (k1 + 2*k2 + 2*k3 + k4);
 
 
 	# this routine will setup the bodies up for simulation, Specifically:
@@ -719,28 +772,16 @@ class _Compute(Environment):
 		time   = numpy.double(time);
 
 		t = numpy.double(0);
-		if (type(locked_body) is NoneType):
-			while (t < time):
-				for body in self:
-					self._collision_handler(body);
-				for body in self:
-					self.update_acceleration(body);
-					self._update_body(body,tDelta);
-					# body.update_position(tDelta);
-					# body.update_velocity(tDelta);
-				t += tDelta;
-		else:
-			while (t < time):
-				for body in self:
-					self._collision_handler(body);
-				frame_acceleration = self.get_acceleration(locked_body);
-				for body in self.every_other_body(locked_body):
-					# assumes sum calles the appropriate numpy method!!
-					self.update_acceleration(body);
-					body.acceleration -= frame_acceleration;
-					body.update_position(tDelta);
-					body.update_velocity(tDelta);
-				t += tDelta;
+
+		while (t < time):
+			for body in self:
+				self._collision_handler(body);
+			for body in self:
+				self.update_acceleration(body);
+				# self._update_body_RK4(body,tDelta);
+				body.update_position(tDelta);
+				body.update_velocity(tDelta);
+			t += tDelta;
 
 	def plot_setup(self):
 		for body in self:
@@ -802,4 +843,3 @@ class _Compute(Environment):
 
 	def angular_momentum(self):
 		return sum(body.mass * _Compute._cross(body.position, body.velocity) for body in self);
-
