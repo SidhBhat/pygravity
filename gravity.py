@@ -1,22 +1,17 @@
-from cProfile import label
-from types import NoneType
-import matplotlib
-import matplotlib.pyplot as pyplot
-import numpy
 from matplotlib.animation import FuncAnimation
 from timeit import default_timer as timer
+# from cProfile import label
+from types import NoneType
+import matplotlib.pyplot as pyplot
+import matplotlib
+import numpy
 import pdb
-
-# Execption Classes
-class Zero_MassERROR(Exception):
-	pass;
-
 
 # Basic class representing a physical body
 class Body:
 	def _set_vector(vec_like):
 		vec = numpy.array(vec_like, dtype=numpy.double);
-		numpy.reshape(vec,2)
+		numpy.reshape(vec, 2)
 		return vec;
 
 	def __init__(self,
@@ -28,9 +23,9 @@ class Body:
 			):
 
 		if(not mass):
-			raise Zero_MassERROR("The mass of a body cannot be zero");
+			raise ValueError("The mass of a body cannot be zero");
 		if (not (type(name) is str and type(color) is str)):
-			raise ValueError("\'name\' nad \'color\' expect string arguments only");
+			raise TypeError("\'name\' nad \'color\' expect string arguments only");
 
 		self.position = Body._set_vector(position);
 		self.mass     = numpy.double(mass);
@@ -218,7 +213,7 @@ class Body_list:
 	'velocity': [<x_vel>, <y_vel>]
 	}
 	"""
-	def __init__(self, *body_list): # Expects a list of dictionaries
+	def __init__(self, *body_list):  # Expects a list of dictionaries
 		self.body_list = [];
 
 		n = int(1);
@@ -357,15 +352,19 @@ class Environment(Body_list):
 			self.origin       = numpy.array([0,0], dtype=numpy.double);
 			self.trace_length = numpy.double(100);
 			self.G            = numpy.double(1);
-			# bring vector to correct shape
-			numpy.reshape(self.origin,2);
-
 			# Lock onto a body
 			self.frame_lockon = None;
+			# time wrap
+			self.timewrap     = numpy.double(0);
+			# Use RK4
+			self.use_rk4      = False;
+			# bring vector to correct shape
+			numpy.reshape(self.origin, 2);
 
 	# call Signature:
 	## set_simulation_opts(timestep=<timestep>, fps=<fps>, radius=<radius>,
-	##       bounds=<bounds>, origin=<[x0, y0]>, trace=<trace>, lock=<body>)
+	##       bounds=<bounds>, origin=<[x0, y0]>, trace=<trace>, lock=<body>,
+	##       rk4=<bool>)
 	def set_simulation_opts(self, **opts):
 		for key in opts.keys():
 			if(type(key) is str):
@@ -383,8 +382,10 @@ class Environment(Body_list):
 					self.set_plot_trace(opts[key]);
 				elif(key == 'G'):
 					self.set_gravitational_constant(opts[key]);
-				elif(key == 'G'):
-					self.lock_frame_on();
+				elif(key == 'lock' or key == 'lockon'):
+					self.lock_frame_on(opts[key]);
+				elif(key == 'rk4' or key == 'use_rk4' or key == 'userk4'):
+					self.lock_frame_on(opts[key]);
 				else:
 					raise IndexError(f"Invalid Key Value \'{key}\'");
 			else:
@@ -410,7 +411,29 @@ class Environment(Body_list):
 		self.plot_properties.trace_length = numpy.double(trace);
 
 	def set_gravitational_constant(self, Num):
-		self.G = numpy.double(Num);
+		self.plot_properties.G = numpy.double(Num);
+
+	def lock_frame_on(self, planet):
+		if(type(planet) is str):
+			planet = self.get_body(planet, get_index=False);
+			if (type(planet) is Body_list):
+				raise ValueError("More than one {planet}");
+
+		if(not (Body is type(planet) or Dynamic_Body is type(planet))):
+			raise TypeError(f"\'{planet}\' is not a body type")
+
+		for body in self:
+			if (body is planet):
+				self.plot_properties.frame_lockon = planet;
+				return;
+		raise ValueError("Body is not contained in Environment");
+
+	def use_rk4(self, opt=True):
+		opt = bool(opt);
+		if(opt):
+			self.plot_properties.use_rk4 = True;
+		else:
+			self.plot_properties.use_rk4 = False;
 
 	def get_timestep(self):
 		return self.plot_properties.timestep;
@@ -429,15 +452,6 @@ class Environment(Body_list):
 
 	def get_gravitational_constant(self):
 		return self.G;
-
-	def lock_frame_on(self, planet):
-		if(not (Body is type(planet) or Dynamic_Body is type(planet))):
-			raise TypeError(f"\'{planet}\' is not a body type")
-		for body in self:
-			if (body is planet):
-				self.plot_properties.frame_lockon = planet;
-				return;
-		raise ValueError("Body is not contained in Environment");
 
 	def unlock_frame(self):
 		self.plot_properties.frame_lockon = None;
@@ -484,6 +498,7 @@ class Environment(Body_list):
 		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
 		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
 
+		plot_simulation_result = bool(plot_simulation_result);
 		time_template = 'time = %.1fs';
 		timestep      = self.get_timestep();
 		fps           = self.get_fps();
@@ -538,40 +553,30 @@ class Environment(Body_list):
 			# initialise info panel
 			info_panel = Simulation_Data();
 
-			def animate(frame_data):
-				nonlocal compute, time_text;
-				start = timer();
-				# plot bodies
+		def animate(frame_data):
+			nonlocal compute, time_text;
+			start = timer();
+			# plot bodies
+			if(self.plot_properties.use_rk4):
+				compute.update_bodies_RK4(1 / fps);
+			else:
 				compute.update_bodies(1 / fps);
-				# update time text
-				time_text.set_text(time_template % (frame_data / fps));
-				# update artists
-				artists = compute.plot_bodies();
-				artists.append(time_text);
-				# collect simulation data
+			# update time text
+			time_text.set_text(time_template % (frame_data / fps));
+			# update artists
+			artists = compute.plot_bodies();
+			artists.append(time_text);
+			# collect simulation data
+			if(plot_simulation_result):
 				info_panel.time_parameter.append(frame_data / fps);
 				info_panel.momentum.append(compute.total_momentum());
 				info_panel.angular_momentum.append(compute.total_angular_momentum());
 				info_panel.kinetic_energy.append(compute.total_kinetic_energy());
 				info_panel.potential_energy.append(compute.total_potential_energy());
 				info_panel.energy.append(compute.total_energy())
-				# collect simulation time
-				time_data.append(timer() - start);
-				return artists;
-		else:
-			def animate(frame_data):
-				nonlocal compute, time_text;
-				start = timer();
-				# plot bodies
-				compute.update_bodies(1 / fps);
-				# update time text
-				time_text.set_text(time_template % (frame_data / fps));
-				# update artists
-				artists = compute.plot_bodies();
-				artists.append(time_text);
-				# collect simulation time
-				time_data.append(timer() - start);
-				return artists;
+			# collect simulation time
+			time_data.append(timer() - start);
+			return artists;
 
 		ani = FuncAnimation(self.figure, animate, numpy.arange(1, fps*time, dtype=numpy.double),
 			init_func=setup, interval=1000 / fps, repeat=False, blit=True);
@@ -585,7 +590,7 @@ class Environment(Body_list):
 
 		pyplot.show();
 
-		if(bool(plot_simulation_result)):
+		if(plot_simulation_result):
 			info_panel.plot();
 
 		print(f"Mean time taken to simulate one frame:\t{sum(time_data) / len(time_data)}");
@@ -760,7 +765,6 @@ class _Compute(Environment):
 
 	## Vector manipulation
 	def _dot(vec1, vec2):
-		# breakpoint();
 		return vec1[0] * vec2[0] + vec1[1] * vec2[1];
 
 	def _cross(vec1, vec2):
@@ -878,7 +882,7 @@ class _Compute(Environment):
 			for body in self:
 				self._collision_handler(body);
 			for body in self:
-				self._update_body(body, tDelta);
+				self._update_body_RK4(body, tDelta);
 			t += tDelta;
 
 	## plot methods
