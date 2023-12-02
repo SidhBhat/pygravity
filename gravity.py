@@ -287,17 +287,17 @@ class Body_list:
 			else:
 				raise ValueError(f"Body with name \'{body_id}\' not found");
 		elif (type(body_id) is int):
-			return self[index];
+			if (body_id >= len(self)):
+				raise IndexError("Index out of range");
+			return self.body_list[body_id];
+		else:
+			raise TypeError(f"Invalid key \'{body_id}\'");
 
 	def __len__(self):
 		return len(self.body_list);
 
-	def __getitem__(self, index):
-		if (not type(index) is int):
-			raise TypeError("Indices must be integers only");
-		elif (index >= len(self)):
-			raise IndexError("Index out of range");
-		return self.body_list[index];
+	def __getitem__(self, key):
+		return self.get_body(key);
 
 	# Required as we frequently use the iterable in nested loops
 	class _Iterator:
@@ -345,26 +345,102 @@ class Environment(Body_list):
 		#default values
 		def __init__(self):
 			# the timestep interval
-			self.timestep     = numpy.double(0.0001);
-			self.fps          = numpy.double(20);
-			self.radius       = numpy.double(0.1);
-			self.bounds       = numpy.double(5);
-			self.origin       = numpy.array([0,0], dtype=numpy.double);
-			self.trace_length = numpy.double(100);
-			self.G            = numpy.double(1);
+			self.timestep       = numpy.double(0.0001);
+			self.fps            = numpy.double(20);
+			self.radius         = numpy.double(0.1);
+			self.bounds         = numpy.double(5);
+			self.origin         = numpy.array([0,0], dtype=numpy.double);
+			self.trace_length   = numpy.double(100);
+			self.G              = numpy.double(1);
 			# Lock onto a body
-			self.frame_lockon = None;
+			self.frame_lockon   = None;
 			# time wrap
-			self.timewrap     = numpy.double(0);
+			self.timewarp       = numpy.double(1);
+			# intertial fram velocity (w.r.t zero momentum frame)
+			self.frame_velocity = numpy.array([0,0], dtype=numpy.double);
 			# Use RK4
-			self.use_rk4      = False;
+			self.use_rk4        = False;
 			# bring vector to correct shape
 			numpy.reshape(self.origin, 2);
+			numpy.reshape(self.frame_velocity, 2);
+
+	class Time:
+		minute = numpy.double(60);
+		hour   = numpy.double(3600);
+		day    = numpy.double(86400);
+		month  = numpy.double(2592000);
+		year   = numpy.double(31536000);
+
+		def __init__(self, time, time_unit='seconds'):
+			if (type(time_unit) is str):
+				if(time_unit == 'seconds' or time_unit == 'second' or
+					time_unit == 'sec' or time_unit == 's'):
+
+					self.time = numpy.double(time);
+				elif(time_unit == 'minutes' or time_unit == 'minute' or
+					time_unit == 'min'):
+
+					self.time = self.minute * numpy.double(time);
+				elif(time_unit == 'hours' or time_unit == 'hour' or
+					time_unit == 'hr' or time_unit == 'h'):
+
+					self.time = self.hour * numpy.double(time);
+				elif(time_unit == 'days' or time_unit == 'day' or
+					time_unit == 'd'):
+
+					self.time = self.day * numpy.double(time);
+				elif(time_unit == 'months' or time_unit == 'month' or
+					time_unit == 'mo'):
+
+					self.time = self.month * numpy.double(time);
+				elif(time_unit == 'years' or time_unit == 'year' or
+					time_unit == 'yr' or time_unit == 'y'):
+
+					self.time = self.year * numpy.double(time);
+				else:
+					raise ValueError(f"Unrecognised time unit: \'{time_unit}\'");
+			else:
+				raise ValueError("\'time_unit\' must be a string type");
+
+		def get_time(self):
+			return self.time;
+
+		def time_string(time):
+			one    = numpy.double(1.1);
+			minute = Environment.Time.minute;
+			hour   = Environment.Time.hour;
+			day    = Environment.Time.day;
+			month  = Environment.Time.month;
+			year   = Environment.Time.year;
+			suffix = "";
+
+			if(time / year > one):
+				time = time / year;
+				suffix    = "years";
+			elif(time / month > one):
+				time = time / month;
+				suffix    = "months";
+			elif(time / day > one):
+				time = time / day;
+				suffix    = "days";
+			elif(time / hour > one):
+				time = time / hour;
+				suffix    = "hours";
+			elif(time / minute > one):
+				time = time / minute;
+				suffix    = "minutes";
+			else:
+				suffix    = 's';
+
+			return ("time = %0.1f " + suffix) % time;
+
+		def get_time_string(self):
+			return self.time_string(self.time);
 
 	# call Signature:
 	## set_simulation_opts(timestep=<timestep>, fps=<fps>, radius=<radius>,
 	##       bounds=<bounds>, origin=<[x0, y0]>, trace=<trace>, lock=<body>,
-	##       rk4=<bool>)
+	##       rk4=<bool>, frame=<inertial_frame>)
 	def set_simulation_opts(self, **opts):
 		for key in opts.keys():
 			if(type(key) is str):
@@ -386,6 +462,10 @@ class Environment(Body_list):
 					self.lock_frame_on(opts[key]);
 				elif(key == 'rk4' or key == 'use_rk4' or key == 'userk4'):
 					self.lock_frame_on(opts[key]);
+				elif(key == 'frame' or key == 'inertial_frame'):
+					self.set_inertial_frame(opts[key]);
+				elif(key == 'timewarp'):
+					self.set_timewarp(opts[key]);
 				else:
 					raise IndexError(f"Invalid Key Value \'{key}\'");
 			else:
@@ -397,6 +477,11 @@ class Environment(Body_list):
 	def set_fps(self, fps):
 		self.plot_properties.fps = numpy.double(fps);
 
+	def set_inertial_frame(self, velocity):
+		self.plot_properties.frame_velocity = \
+			numpy.array(velocity, dtype=numpy.double);
+		numpy.reshape(self.plot_properties.frame_velocity, 2);
+
 	def set_radius(self, radius):
 		self.plot_properties.radius = numpy.double(radius);
 
@@ -404,7 +489,7 @@ class Environment(Body_list):
 		self.plot_properties.bounds = numpy.double(lim);
 
 	def set_origin(self, origin):
-		self.plot_properties.origin = numpy.array(origin);
+		self.plot_properties.origin = numpy.array(origin, dtype=numpy.double);
 		numpy.reshape(self.plot_properties.origin, 2);
 
 	def set_plot_trace(self, trace):
@@ -412,6 +497,12 @@ class Environment(Body_list):
 
 	def set_gravitational_constant(self, Num):
 		self.plot_properties.G = numpy.double(Num);
+
+	def set_timewarp(self, timewarp):
+		timewarp = numpy.double(timewarp);
+		if (timewarp < numpy.double(0)):
+			raise ValueError("You cannot reverse time like this :v");
+		self.plot_properties.timewarp = numpy.double(timewarp);
 
 	def lock_frame_on(self, planet):
 		if(type(planet) is str):
@@ -441,6 +532,9 @@ class Environment(Body_list):
 	def get_fps(self):
 		return self.plot_properties.fps;
 
+	def get_inertial_frame(self):
+		return self.plot_properties.frame_velocity;
+
 	def get_radius(self):
 		return self.plot_properties.radius;
 
@@ -451,10 +545,18 @@ class Environment(Body_list):
 		return self.plot_properties.origin;
 
 	def get_gravitational_constant(self):
-		return self.G;
+		return self.plot_properties.G;
+
+	def get_timewarp(self):
+		return self.plot_properties.timewarp;
 
 	def unlock_frame(self):
 		self.plot_properties.frame_lockon = None;
+
+	def clear_trace(self):
+		for body in self:
+			if (hasattr(body, 'trace')):
+				del body.trace, body.xtrace, body.ytrace;
 
 	def show(self, **properties):
 		# initialise figure
@@ -485,28 +587,7 @@ class Environment(Body_list):
 	# alias functions
 	draw = show;
 
-	def simulate(self, time, plot_simulation_result=False, **properties):
-		# initialise figure
-		self.set_simulation_opts(**properties);
-		self.figure, self.axes = pyplot.subplots(1,1);
-		# initialise _Compute instance
-		compute = _Compute(self);
-
-		# set plot window limits
-		xllim = self.plot_properties.origin[0] - self.plot_properties.bounds / 2;
-		xhlim = self.plot_properties.origin[0] + self.plot_properties.bounds / 2;
-		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
-		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
-
-		plot_simulation_result = bool(plot_simulation_result);
-		time_template = 'time = %.1fs';
-		timestep      = self.get_timestep();
-		fps           = self.get_fps();
-		time_text     = None;
-		time_data     = [];
-
-		if(fps * timestep >= numpy.double(1)):
-			raise ValueError(f"timestep \'{timestep}\' is too large")
+	def simulate(self, time, time_unit='seconds', plot_simulation_result=False, **properties):
 
 		class Simulation_Data:
 			def __init__(self):
@@ -537,24 +618,56 @@ class Environment(Body_list):
 
 				pyplot.show();
 
+		# initialise figure
+		self.set_simulation_opts(**properties);
+		self.figure, self.axes = pyplot.subplots(1,1);
+		# initialise _Compute instance
+		compute = _Compute(self);
+
+		# set plot window limits
+		xllim = self.plot_properties.origin[0] - self.plot_properties.bounds / 2;
+		xhlim = self.plot_properties.origin[0] + self.plot_properties.bounds / 2;
+		yllim = self.plot_properties.origin[1] - self.plot_properties.bounds / 2;
+		yhlim = self.plot_properties.origin[1] + self.plot_properties.bounds / 2;
+
+		# initialise Variables
+		plot_simulation_result = bool(plot_simulation_result);
+		timestep      = self.get_timestep();
+		timewarp      = self.get_timewarp();
+		fps           = self.get_fps() / timewarp;
+		time_text     = None;
+		time_data     = [];
+
+		# initialise local class instances
+		if (plot_simulation_result):
+			# initialise info panel
+			info_panel = Simulation_Data();
+		# initialise time class
+		time = Environment.Time(time, time_unit).get_time();
+		# function to convert time into a string with human readable units
+		time_string = Environment.Time.time_string;
+
+		if(fps * timestep >= numpy.double(1)):
+			raise ValueError(f"timestep \'{timestep}\' is too large");
+
+		if(fps * time <= numpy.double(1)):
+			raise ValueError(f"simulation time is lesser than the interval between frames"
+							+ f"\nMinimum reqired time: {1 / fps}");
+
 		def setup():
-			nonlocal time_text, time_template, compute;
+			nonlocal time_string, time_text, compute;
 			# setup plot
 			compute.setup_bodies();
 			compute.plot_setup();
 			# add time text
-			time_text = self.axes.text(0.05, 0.9, (time_template % 0.0),
+			time_text = self.axes.text(0.05, 0.9, time_string(numpy.double(0.0)),
 							transform = self.axes.transAxes);
 			artists = compute.plot_bodies();
 			artists.append(time_text);
 			return artists;
 
-		if (bool(plot_simulation_result)):
-			# initialise info panel
-			info_panel = Simulation_Data();
-
 		def animate(frame_data):
-			nonlocal compute, time_text;
+			nonlocal time_string, compute, time_text;
 			start = timer();
 			# plot bodies
 			if(self.plot_properties.use_rk4):
@@ -562,7 +675,7 @@ class Environment(Body_list):
 			else:
 				compute.update_bodies(1 / fps);
 			# update time text
-			time_text.set_text(time_template % (frame_data / fps));
+			time_text.set_text(time_string(frame_data / fps));
 			# update artists
 			artists = compute.plot_bodies();
 			artists.append(time_text);
@@ -573,13 +686,14 @@ class Environment(Body_list):
 				info_panel.angular_momentum.append(compute.total_angular_momentum());
 				info_panel.kinetic_energy.append(compute.total_kinetic_energy());
 				info_panel.potential_energy.append(compute.total_potential_energy());
-				info_panel.energy.append(compute.total_energy())
+				info_panel.energy.append(compute.total_energy());
 			# collect simulation time
 			time_data.append(timer() - start);
 			return artists;
 
-		ani = FuncAnimation(self.figure, animate, numpy.arange(1, fps*time, dtype=numpy.double),
-			init_func=setup, interval=1000 / fps, repeat=False, blit=True);
+		ani = FuncAnimation(self.figure, animate,
+			numpy.arange(1, fps*time, dtype=numpy.double),
+			init_func=setup, interval=1000 / fps / timewarp, repeat=False, blit=True);
 
 		# set axis properties
 		self.axes.axis('square');
@@ -593,8 +707,12 @@ class Environment(Body_list):
 		if(plot_simulation_result):
 			info_panel.plot();
 
-		print(f"Mean time taken to simulate one frame:\t{sum(time_data) / len(time_data)}");
-		print(f"Time between frames as per fps setting:\t{1 / fps}");
+		loop_interval        = sum(time_data) / len(time_data);
+		theoretical_interval = 1.0 / fps / timewarp;
+		actual_interval      = theoretical_interval + loop_interval;
+		print(f"Mean time taken to simulate one frame:\t{loop_interval}");
+		print(f"Time between frames as per fps setting:\t{theoretical_interval}");
+		print(f"Real Time Ratio :\t{theoretical_interval / actual_interval}");
 
 
 # Helper class for computations
@@ -783,7 +901,8 @@ class _Compute(Environment):
 	# else it is locked to a specific body (non inertial)
 	def _refresh_referance_frame(self):
 		if (type(self.plot_properties.frame_lockon) is NoneType):
-			self.change_intertial_frame(self.zero_momentum_frame());
+			self.change_intertial_frame(self.zero_momentum_frame()
+							   + self.plot_properties.frame_velocity);
 		else:
 			self.change_intertial_frame(
 				self.plot_properties.frame_lockon.velocity);
@@ -797,6 +916,7 @@ class _Compute(Environment):
 		for bd in self.every_other_body(body):
 			if(self.two_bodies_overlap(body, bd)):
 				self.merge_two_bodies(body,bd);
+				self.adjust_radii();
 				self._refresh_referance_frame();
 
 	# update body

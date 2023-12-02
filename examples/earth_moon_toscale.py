@@ -10,11 +10,11 @@ env.set_gravitational_constant(6.6743e-11)
 earth.set_parameters(radius=6.371e6);
 moon.set_parameters(radius=1.737e6);
 
-env.set_timestep(0.01);
-env.set_bounds(4e6);
-env.set_origin(moon['position']);
+# configure time warp
+env.set_timestep(100);
+env.set_timewarp(100000);
+# set window limits
+env.set_bounds(9e8);
 
-env.draw();
-
-env.simulate(100, plot_simulation_result=True);
+env.simulate(30,'days', plot_simulation_result=True);
 
