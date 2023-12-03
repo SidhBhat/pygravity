@@ -16,5 +16,9 @@ env.set_timewarp(100000);
 # set window limits
 env.set_bounds(9e8);
 
+env.draw();
+
 env.simulate(30,'days', plot_simulation_result=True);
 
+for body  in env:
+	print(body);

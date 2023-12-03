@@ -1,4 +1,5 @@
 from matplotlib.animation import FuncAnimation
+from matplotlib.animation import FFMpegFileWriter
 from timeit import default_timer as timer
 # from cProfile import label
 from types import NoneType
@@ -587,7 +588,8 @@ class Environment(Body_list):
 	# alias functions
 	draw = show;
 
-	def simulate(self, time, time_unit='seconds', plot_simulation_result=False, **properties):
+	def simulate(self, time, time_unit='seconds', save=None, dpi=100, extra_args=None,
+			plot_simulation_result=False, **properties):
 
 		class Simulation_Data:
 			def __init__(self):
@@ -632,6 +634,7 @@ class Environment(Body_list):
 
 		# initialise Variables
 		plot_simulation_result = bool(plot_simulation_result);
+		write_to_file = True;
 		timestep      = self.get_timestep();
 		timewarp      = self.get_timewarp();
 		fps           = self.get_fps() / timewarp;
@@ -654,6 +657,9 @@ class Environment(Body_list):
 			raise ValueError(f"simulation time is lesser than the interval between frames"
 							+ f"\nMinimum reqired time: {1 / fps}");
 
+		# Writer = FFMpegFileWriter(fps=10);
+		# Writer.setup(self.figure, "animation.mp4");
+
 		def setup():
 			nonlocal time_string, time_text, compute;
 			# setup plot
@@ -662,8 +668,8 @@ class Environment(Body_list):
 			# add time text
 			time_text = self.axes.text(0.05, 0.9, time_string(numpy.double(0.0)),
 							transform = self.axes.transAxes);
+			compute.add_artist(time_text);
 			artists = compute.plot_bodies();
-			artists.append(time_text);
 			return artists;
 
 		def animate(frame_data):
@@ -678,7 +684,6 @@ class Environment(Body_list):
 			time_text.set_text(time_string(frame_data / fps));
 			# update artists
 			artists = compute.plot_bodies();
-			artists.append(time_text);
 			# collect simulation data
 			if(plot_simulation_result):
 				info_panel.time_parameter.append(frame_data / fps);
@@ -688,12 +693,11 @@ class Environment(Body_list):
 				info_panel.potential_energy.append(compute.total_potential_energy());
 				info_panel.energy.append(compute.total_energy());
 			# collect simulation time
+			# self.figure.canvas.flush_events()
+			# Writer.grab_frame();
+			print(time_string(frame_data / fps), end='\r');
 			time_data.append(timer() - start);
 			return artists;
-
-		ani = FuncAnimation(self.figure, animate,
-			numpy.arange(1, fps*time, dtype=numpy.double),
-			init_func=setup, interval=1000 / fps / timewarp, repeat=False, blit=True);
 
 		# set axis properties
 		self.axes.axis('square');
@@ -702,7 +706,15 @@ class Environment(Body_list):
 		self.axes.autoscale(False);
 		self.axes.axis('off');
 
+		ani = FuncAnimation(self.figure, animate,
+			numpy.arange(1, fps*time, dtype=numpy.double),
+			init_func=setup, interval=1000 / fps / timewarp, repeat=False, blit=False);
+
+		# FFwriter = FFMpegFileWriter(fps=self.get_fps(), extra_args=['-c:v', 'h264_nvenc','-preset', 'slow', '-vf', f'fps={self.get_fps()}'])
+		# ani.save('basic_animation.mp4', writer=FFwriter, dpi=500);
+
 		pyplot.show();
+		# Writer.finish();
 
 		if(plot_simulation_result):
 			info_panel.plot();
@@ -713,6 +725,7 @@ class Environment(Body_list):
 		print(f"Mean time taken to simulate one frame:\t{loop_interval}");
 		print(f"Time between frames as per fps setting:\t{theoretical_interval}");
 		print(f"Real Time Ratio :\t{theoretical_interval / actual_interval}");
+		# print(f"Total Simulation Time: {simulation_time}");
 
 
 # Helper class for computations
@@ -831,6 +844,9 @@ class _Compute(Environment):
 			bd2.mass = Mass;
 			bd2.velocity = velocity;
 			bd1.name = delete_string;
+			# remove the artist object associated with teh body
+			if(hasattr(bd1,'circle')):
+				bd1.circle.remove();
 			bd = bd2;
 		else:
 			if (bd2 is locked_body):
@@ -838,6 +854,9 @@ class _Compute(Environment):
 			bd1.mass = Mass;
 			bd1.velocity = velocity;
 			bd2.name = delete_string;
+			# remove the artist object associated with teh body
+			if(hasattr(bd2,'circle')):
+				bd2.circle.remove();
 			bd = bd1;
 		self.remove_body(delete_string);
 
@@ -1009,18 +1028,28 @@ class _Compute(Environment):
 
 	# setup plot
 	def plot_setup(self):
+		if(not hasattr(self, '_Circles_Collection')):
+			self._Circles_Collection = None;
 		for body in self:
 			# prevent previous trace being erased
 			if (not hasattr(body,'trace')):
 				body.xtrace = [];
 				body.ytrace = [];
 			body.trace, = self.axes.plot([],[], body.color+'.', lw=1, ms=1);
+			body.circle = \
+				pyplot.Circle(body.position, radius=self.radius(body),
+					color=body.color);
+		## Generate list of artists
+		# Bodies = self.axes.add_collection(
+		# 	matplotlib.collections.PatchCollection(tuple(
+		# 		body.circle for body in self), match_original=True));
+		Bodies = list(self.axes.add_patch(body.circle) for body in self);
+		Artists = list(body.trace for body in self) + Bodies;
+		# Artists.append(Bodies);
+		self.artists = Artists;
 
 	# update the frame
 	def plot_bodies(self):
-		artists = [];
-		circles  = [];
-
 		for body in self:
 			if (len(body.xtrace) < self.plot_properties.trace_length):
 				body.xtrace.append(body.position[0]);
@@ -1031,11 +1060,18 @@ class _Compute(Environment):
 				body.xtrace.append(body.position[0]);
 				body.ytrace.append(body.position[1]);
 			body.trace.set_data(body.xtrace, body.ytrace);
-			circles.append(
-				pyplot.Circle(body.position, radius=self.radius(body), color=body.color)
-				)
-			artists.append(body.trace);
-		artists.append(self.axes.add_collection(
-		matplotlib.collections.PatchCollection(circles, match_original=True)));
+			body.circle.set_center(body.position);
+			body.circle.set_radius(body.radius);
 
-		return artists;
+		return self.artists;
+
+	# add an external artist to the list of artists
+	# You will have to manage updating them yourself
+	def add_artist(self, artist):
+		if (not issubclass(type(artist),  matplotlib.artist.Artist)):
+			raise TypeError("artist must be a instace of \'matplotlib.artist.Artist\'");
+		if (not hasattr(self, 'artists')):
+			raise RuntimeError("Please execute \'plot_setup\' before adding Artists");
+		self.artists.append(artist);
+		return self.artists;
+
