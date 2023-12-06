@@ -17,4 +17,3 @@ env.set_timewarp(100000);
 env.set_bounds(9e8);
 
 env.simulate(30,'days', plot_simulation_result=True);
-
