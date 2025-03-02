@@ -305,6 +305,8 @@ class Body_list:
 		def __init__(self, body_list_obj):
 			self._data = body_list_obj;
 			self._pos = int(0);
+		def __iter__(self):
+			return self;
 		def __next__(self):
 			if (self._pos >= len(self._data)):
 				raise StopIteration;
